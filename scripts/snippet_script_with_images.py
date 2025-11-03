@@ -15,7 +15,7 @@ from astropy.coordinates import SkyCoord
 from astropy.visualization import astropy_mpl_style, ImageNormalize, ZScaleInterval, PercentileInterval, AsinhStretch, SqrtStretch, SquaredStretch
 from argparse import ArgumentParser
 
-def Imgs_import(filename6):
+def imgs_import(filename6):
     # 6 arcsecond resolution
     im_6_arcs = fits.open(filename6)
     im_6_arcs_data = im_6_arcs[0].data[0,0,:,:]
@@ -34,35 +34,21 @@ def Imgs_import(filename6):
         ))
     return im_6_arcs_data, im_6_arcs_header, wcs_6_arcs , all_im_03_arcs
     
-def Cat_import(filename):
+def cat_import(filename):
     catelog = fits.open(filename)
     # Improvement! -> automated the recognition of columns and splitting to work for any combination
     
     # Getting all colums from catelog 
     # E columns are error columns
     # Different database but label descriptions seem the same https://heasarc.gsfc.nasa.gov/w3browse/all/nvss.html 
-    SOURCE_ID = catelog[1].data['Source_ID'] 
-    CAT_ID = catelog[1].data['Cat_id']
-    RA = catelog[1].data['RA'] # deg
-    E_RA = catelog[1].data['E_RA'] # deg
-    DEC = catelog[1].data['DEC'] # deg
-    E_DEC = catelog[1].data['E_DEC'] # deg
-    TOTAL_FLUX = catelog[1].data['Total_flux'] # Jy
-    E_TOTAL_FLUX = catelog[1].data['E_Total_flux'] # Jy
-    PEAK_FLUX = catelog[1].data['Peak_flux'] # beam-1 Jy
-    E_PEAK_FLUX = catelog[1].data['E_Peak_flux'] # beam-1 Jy
-    MAJ = catelog[1].data['Maj'] # deg
-    E_MAJ = catelog[1].data['E_Maj'] # deg
-    MIN = catelog[1].data['Min'] # deg
-    E_Min = catelog[1].data['E_Min'] # deg
-    PA = catelog[1].data['PA'] # deg
-    E_PA = catelog[1].data['E_PA '] # deg
-    S_CODE = catelog[1].data['S_Code']
-    ISL_RMS = catelog[1].data['Isl_rms']
+    source_id = catelog[1].data['Source_ID']
+    cat_id = catelog[1].data['Cat_id']
+    ra = catelog[1].data['RA'] # deg
+    dec = catelog[1].data['DEC'] # deg
     
-    return SOURCE_ID, CAT_ID, RA, DEC # Probably could also make this more efficient
+    return source_id, cat_id, ra, dec # Probably could also make this more efficient
 
-def Take_snippet(source_idx, r, RA, DEC, CAT_ID, SOURCE_ID, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs):
+def take_snippet(source_idx, r, ra, dec, cat_id, source_id, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs):
     """
     Creating a cutout in both 6 and 0.3 arcseconds. As well as creating an image
     inputs:
@@ -78,11 +64,11 @@ def Take_snippet(source_idx, r, RA, DEC, CAT_ID, SOURCE_ID, all_im_03_arcs, im_6
     """
     # Setting the basics
     scale = 15 # scaling between 6" and 0.3" -> could also be defined outside function
-    c_RA, c_DEC = RA[source_idx], DEC[source_idx] 
+    c_RA, c_DEC = ra[source_idx], dec[source_idx]
     coord = SkyCoord(c_RA, c_DEC, unit="deg")
 
     # Finding correct facet for 0.3"
-    cat_id = CAT_ID[source_idx]
+    cat_id = cat_id[source_idx]
     facet = int(str(cat_id )[:2].replace("_", " "))
     im_03_arcs_header, im_03_arcs_data, wcs_03_arcs = all_im_03_arcs[facet]
 
@@ -99,11 +85,11 @@ def Take_snippet(source_idx, r, RA, DEC, CAT_ID, SOURCE_ID, all_im_03_arcs, im_6
     # Saving files
     path_6_output = '/net/vdesk/data2/WoestE/6resolution_output/'
     hdu_6_arc = fits.PrimaryHDU(header=cutout_6_header, data=cutout_6_image)
-    hdu_6_arc.writeto(str(path_6_output)+str(SOURCE_ID[source_idx])+"_Rad"+str(r)+"_6arcs.fits", overwrite=True)
+    hdu_6_arc.writeto(str(path_6_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_6arcs.fits", overwrite=True)
 
     path_03_output = '/net/vdesk/data2/WoestE/03resolution_output/'
     hdu_03_arc = fits.PrimaryHDU(header=cutout_03_header, data=cutout_03_image)
-    hdu_03_arc.writeto(str(path_03_output)+str(SOURCE_ID[source_idx])+"_Rad"+str(r)+"_03arcs.fits", overwrite=True)
+    hdu_03_arc.writeto(str(path_03_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_03arcs.fits", overwrite=True)
     
     # Finding the noise levels
     rms_6_imp = findrms(cutout_6_image)
@@ -124,7 +110,7 @@ def Take_snippet(source_idx, r, RA, DEC, CAT_ID, SOURCE_ID, all_im_03_arcs, im_6
     # plt.colorbar()
     plt.grid(color='white', linestyle = 'dashed')
     path_im = '/net/vdesk/data2/WoestE/pngs/'
-    plt.savefig(path_im+str(SOURCE_ID[source_idx])+"_Rad"+str(r)+".png")
+    plt.savefig(path_im+str(source_id[source_idx])+"_Rad"+str(r)+".png")
     plt.clf()
     
 def parse_args():
@@ -132,11 +118,11 @@ def parse_args():
     Command line argument parser
     :return: parsed arguments
     """
-    parser = ArgumentParser(description='Crop fits files in multiple resolutions')
-    parser.add_argument('filename6', help='fits input 6 arcseconds', type=str)
+    parser = ArgumentParser(description='Crop FITS files at multiple resolutions')
+    parser.add_argument('--filename6', help='Path to 6 arcsecond FITS image', type=str)
     # parser.add_argument('path', help='path to input files 0.3 arcseconds', type=str) 
     # Wasn't recognised in main so took it out for now but will import again later for automation purporses
-    parser.add_argument('cat', help='catelog file', type=str)
+    parser.add_argument('--cat', help='Path to catalogue', type=str)
     return parser.parse_args()
 
 def findrms(mIn,maskSup=1e-7):
@@ -147,7 +133,6 @@ def findrms(mIn,maskSup=1e-7):
     rmsold=np.std(m)
     diff=1e-1
     cut=3.
-    bins=np.arange(np.min(m),np.max(m),(np.max(m)-np.min(m))/30.)
     med=np.median(m)
     for i in range(10):
         ind=np.where(np.abs(m-med)<rmsold*cut)[0]
@@ -160,10 +145,10 @@ def findrms(mIn,maskSup=1e-7):
 def main():
     """ Main function"""
     args = parse_args()
-    im_6_arcs_data, im_6_arcs_header, wcs_6_arcs , all_im_03_arcs = Imgs_import(args.filename6)
-    SOURCE_ID, CAT_ID, RA, DEC = Cat_import(args.cat)
-    for i in range(len(RA)): # Need to automatically find length again!
-        Take_snippet(i, 2048, RA, DEC, CAT_ID, SOURCE_ID, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs)
+    im_6_arcs_data, im_6_arcs_header, wcs_6_arcs, all_im_03_arcs = imgs_import(args.filename6)
+    source_id, cat_id, ra, dec = cat_import(args.cat)
+    for i in range(len(ra)): # Need to automatically find length again!
+        take_snippet(i, 2048, ra, dec, cat_id, source_id, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs)
 
 if __name__ == '__main__':
     main()
