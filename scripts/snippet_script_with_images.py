@@ -118,11 +118,11 @@ def parse_args():
     Command line argument parser
     :return: parsed arguments
     """
-    parser = ArgumentParser(description='Crop fits files in multiple resolutions')
-    parser.add_argument('--filename6', help='fits input 6 arcseconds', type=str)
+    parser = ArgumentParser(description='Crop FITS files at multiple resolutions')
+    parser.add_argument('--filename6', help='Path to 6 arcsecond FITS image', type=str)
     # parser.add_argument('path', help='path to input files 0.3 arcseconds', type=str) 
     # Wasn't recognised in main so took it out for now but will import again later for automation purporses
-    parser.add_argument('--cat', help='catelog file', type=str)
+    parser.add_argument('--cat', help='Path to catalogue', type=str)
     return parser.parse_args()
 
 def findrms(mIn,maskSup=1e-7):
