@@ -82,33 +82,58 @@ def take_snippet(source_idx, r, ra, dec, cat_id, source_id, all_im_03_arcs, im_6
     cutout_03_image = cutout_03_arcs.data
     cutout_03_header = cutout_03_arcs.wcs.to_header()
     
-    # Saving files
-    path_6_output = '/net/vdesk/data2/WoestE/6resolution_output/'
-    hdu_6_arc = fits.PrimaryHDU(header=cutout_6_header, data=cutout_6_image)
-    hdu_6_arc.writeto(str(path_6_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_6arcs.fits", overwrite=True)
-
-    path_03_output = '/net/vdesk/data2/WoestE/03resolution_output/'
-    hdu_03_arc = fits.PrimaryHDU(header=cutout_03_header, data=cutout_03_image)
-    hdu_03_arc.writeto(str(path_03_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_03arcs.fits", overwrite=True)
-    
     # Finding the noise levels
     rms_6_imp = findrms(cutout_6_image)
     rms_03_imp = findrms(cutout_03_image)
-
-    # Defining upper and lower limits in terms of s/n ratio in plots
-    vmin = 5
-    vmax = 50
+        
+    # Finding peak 
+    im_6_max = np.nanmax(cutout_6_image)
+    im_03_max = np.nanmax(cutout_03_image)
+    diff_max = im_6_max-im_03_max
     
+    cut_off_ps = 5e-4
+    
+    # Defining upper and lower limits in terms of s/n ratio in plots
+    if im_6_max >= rms_6_imp:
+       vmax_6 = int(np.round(im_6_max/rms_6_imp))
+       vmin_6 = 3
+    else: 
+       vmax_6 =  int(np.round(im_6_max/rms_6_imp))
+       vmin_6 = 1
+    
+    if im_03_max >= rms_03_imp:
+       vmax_03 = int(np.round(im_03_max/rms_03_imp))
+       vmin_03 = 3
+    else: 
+       vmax_03 =  int(np.round(im_03_max/rms_03_imp))
+       vmin_03 = 1
+    
+    # Now moving onto finding splitting point and non point sources
+    if diff_max > cut_off_ps:
+        path_6_output = '/net/vdesk/data2/WoestE/6resolution_output_64/Non_point_source/'
+        path_03_output = '/net/vdesk/data2/WoestE/03resolution_output_64/Non_point_source/'
+    else:
+        path_6_output = '/net/vdesk/data2/WoestE/6resolution_output_64/Point_source/'
+        path_03_output = '/net/vdesk/data2/WoestE/03resolution_output_64/Point_source/'
+           
+    # Saving files
+    hdu_6_arc = fits.PrimaryHDU(header=cutout_6_header, data=cutout_6_image)
+    hdu_6_arc.writeto(str(path_6_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_6arcs.fits", overwrite=True)
+
+    hdu_03_arc = fits.PrimaryHDU(header=cutout_03_header, data=cutout_03_image)
+    hdu_03_arc.writeto(str(path_03_output)+str(source_id[source_idx])+"_Rad"+str(r)+"_03arcs.fits", overwrite=True)
+       
     # Plotting
     ax1 = plt.subplot((121), projection = WCS(cutout_6_header, naxis = 2))
-    plt.imshow(np.abs(cutout_6_image), cmap = 'inferno', norm = colors.LogNorm(vmin * rms_6_imp, vmax * rms_6_imp))
-    # plt.colorbar() -> they are different right
-    plt.grid(color='white', linestyle = 'dashed')    
+    plt.imshow(np.abs(cutout_6_image), cmap = 'inferno', norm = colors.LogNorm(vmin_6 * rms_6_imp, vmax_6 * rms_6_imp))
+    # plt.colorbar() -> they are different right  
 
     ax2 = plt.subplot((122), projection = WCS(cutout_03_header, naxis = 2),)
-    plt.imshow(np.abs(cutout_03_image), cmap = 'inferno', norm = colors.LogNorm(vmin * rms_03_imp, vmax * rms_03_imp))
+    ax2.coords['pos.eq.dec'].set_ticks_visible(False)
+    ax2.coords['pos.eq.dec'].set_ticklabel_visible(False)
+    ax2.coords['pos.eq.dec'].set_axislabel('')   
+    plt.imshow(np.abs(cutout_03_image), cmap = 'inferno', norm = colors.LogNorm(vmin_03 * rms_03_imp, vmax_03 * rms_03_imp))
     # plt.colorbar()
-    plt.grid(color='white', linestyle = 'dashed')
     path_im = '/net/vdesk/data2/WoestE/pngs/'
     plt.savefig(path_im+str(source_id[source_idx])+"_Rad"+str(r)+".png")
     plt.clf()
@@ -119,10 +144,10 @@ def parse_args():
     :return: parsed arguments
     """
     parser = ArgumentParser(description='Crop FITS files at multiple resolutions')
-    parser.add_argument('--filename6', help='Path to 6 arcsecond FITS image', type=str)
+    parser.add_argument('filename6', help='Path to 6 arcsecond FITS image', type=str)
     # parser.add_argument('path', help='path to input files 0.3 arcseconds', type=str) 
     # Wasn't recognised in main so took it out for now but will import again later for automation purporses
-    parser.add_argument('--cat', help='Path to catalogue', type=str)
+    parser.add_argument('cat', help='Path to catalogue', type=str)
     return parser.parse_args()
 
 def findrms(mIn,maskSup=1e-7):
@@ -148,7 +173,7 @@ def main():
     im_6_arcs_data, im_6_arcs_header, wcs_6_arcs, all_im_03_arcs = imgs_import(args.filename6)
     source_id, cat_id, ra, dec = cat_import(args.cat)
     for i in range(len(ra)): # Need to automatically find length again!
-        take_snippet(i, 2048, ra, dec, cat_id, source_id, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs)
+        take_snippet(i, 64, ra, dec, cat_id, source_id, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs)
 
 if __name__ == '__main__':
     main()
