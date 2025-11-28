@@ -1,0 +1,175 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov  3 11:52:00 2025
+
+@author: ethan
+"""
+
+import numpy as np
+import astropy.io.fits as fits 
+from astropy.wcs import WCS
+from astropy.nddata import Cutout2D
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+from astropy.coordinates import SkyCoord
+from astropy.visualization import astropy_mpl_style, ImageNormalize, ZScaleInterval, PercentileInterval, AsinhStretch, SqrtStretch, SquaredStretch
+from argparse import ArgumentParser
+
+def imgs_import(filename6):
+    # 6 arcsecond resolution
+    im_6_arcs = fits.open(filename6)
+    im_6_arcs_data = im_6_arcs[0].data[0,0,:,:]
+    im_6_arcs_header = im_6_arcs[0].header
+    wcs_6_arcs = WCS(im_6_arcs_header, naxis = 2)
+    
+    # 0.3 arcsecond resolution
+    # path_03 = path03
+    path_03 = "03resolution_EDFN/"
+    all_im_03_arcs = []
+    for i in range(25):
+        im_03 = fits.open(path_03 + f"poly_{i}_0.5asec_flux+astrometry_corr.fits")
+        all_im_03_arcs.append((im_03[0].header, 
+            im_03[0].data,
+            WCS(im_03[0].header, naxis=2)
+        ))
+    return im_6_arcs_data, im_6_arcs_header, wcs_6_arcs , all_im_03_arcs
+    
+def take_snippet(r, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs):
+    """
+    Creating a cutout in both 6 and 0.3 arcseconds. As well as creating an image
+    inputs:
+        source_idx = index used to gain results from catelog
+        r = number of pixels in 6 arcseconds (rxr cutout)
+        RA, DEC, SOURCE_ID are taken from catelog
+        rest is from loading in images
+        
+    outputs:
+        fits file 6 arcseconds cutout
+        fits file 0.3 arcseconds cutout
+        png file comparing the two
+    """
+    for i in range(25):
+        path_cat = "03resolution_EDFN/tables/"
+        catelog = fits.open(path_cat + f'poly_{i}_0.5asec_flux+astrometry_corr.pybdsf.srl.FITS')
+        # Improvement! -> automated the recognition of columns and splitting to work for any combination
+        
+        # Getting all colums from catelog 
+        # E columns are error columns
+        # Different database but label descriptions seem the same https://heasarc.gsfc.nasa.gov/w3browse/all/nvss.html 
+        source_id = catelog[1].data['Source_ID']
+        ra = catelog[1].data['RA'] # deg
+        dec = catelog[1].data['DEC'] # deg
+        
+        for j in range(len(ra)):
+            source_idx = j
+            # Setting the basics
+            scale = 15 # scaling between 6" and 0.3" -> could also be defined outside function
+            c_RA, c_DEC = ra[source_idx], dec[source_idx]
+            coord = SkyCoord(c_RA, c_DEC, unit="deg")
+        
+            # Finding correct facet for 0.3"
+            im_03_arcs_header, im_03_arcs_data, wcs_03_arcs = all_im_03_arcs[i]
+        
+            # 6" cutout
+            cutout_6_arcs = Cutout2D(im_6_arcs_data, coord, r, wcs_6_arcs)
+            cutout_6_image = cutout_6_arcs.data
+            cutout_6_header = cutout_6_arcs.wcs.to_header()
+        
+            # 0.3" cutout
+            cutout_03_arcs = Cutout2D(im_03_arcs_data, coord, r*scale, wcs_03_arcs)
+            cutout_03_image = cutout_03_arcs.data
+            cutout_03_header = cutout_03_arcs.wcs.to_header()
+            
+            # Finding the noise levels
+            rms_6_imp = findrms(cutout_6_image)
+            rms_03_imp = findrms(cutout_03_image)
+                
+            # Finding peak 
+            im_6_max = np.nanmax(cutout_6_image)
+            im_03_max = np.nanmax(cutout_03_image)
+            diff_max = im_6_max-im_03_max
+            
+            cut_off_ps = 5e-4
+            
+            # Defining upper and lower limits in terms of s/n ratio in plots
+            if im_6_max >= rms_6_imp:
+               vmax_6 = int(np.round(im_6_max/rms_6_imp))
+               vmin_6 = 3
+            else: 
+               vmax_6 =  int(np.round(im_6_max/rms_6_imp))
+               vmin_6 = 1
+        
+            if im_03_max >= rms_03_imp:
+               vmax_03 = int(np.round(im_03_max/rms_03_imp))
+               vmin_03 = 3
+            else: 
+               vmax_03 =  int(np.round(im_03_max/rms_03_imp))
+               vmin_03 = 1
+            
+            # Now moving onto finding splitting point and non point sources
+            if diff_max > cut_off_ps:
+                path_6_output = '/net/vdesk/data2/WoestE/output_EDFN/6resolution_output/Non_point_source/'
+                path_03_output = '/net/vdesk/data2/WoestE/output_EDFN/03resolution_output/Non_point_source/'
+            else:
+                path_6_output = '/net/vdesk/data2/WoestE/output_EDFN/6resolution_output/Point_source/'
+                path_03_output = '/net/vdesk/data2/WoestE/output_EDFN/03resolution_output/Point_source/'
+                        
+            # Saving files
+            hdu_6_arc = fits.PrimaryHDU(header=cutout_6_header, data=cutout_6_image)
+            hdu_6_arc.writeto(str(path_6_output)+'F'+str(i)+'S'+str(source_id[source_idx])+"_Rad"+str(r)+"_6arcs.fits", overwrite=True)
+        
+            hdu_03_arc = fits.PrimaryHDU(header=cutout_03_header, data=cutout_03_image)
+            hdu_03_arc.writeto(str(path_03_output)+'F'+str(i)+'S'+str(source_id[source_idx])+"_Rad"+str(r)+"_03arcs.fits", overwrite=True)
+               
+            # Plotting
+            ax1 = plt.subplot((121), projection = WCS(cutout_6_header, naxis = 2))
+            plt.imshow(np.abs(cutout_6_image), cmap = 'inferno', norm = colors.LogNorm(vmin_6 * rms_6_imp, vmax_6 * rms_6_imp))
+            # plt.colorbar() -> they are different right  
+        
+            ax2 = plt.subplot((122), projection = WCS(cutout_03_header, naxis = 2),)
+            ax2.coords['pos.eq.dec'].set_ticks_visible(False)
+            ax2.coords['pos.eq.dec'].set_ticklabel_visible(False)
+            ax2.coords['pos.eq.dec'].set_axislabel('')   
+            plt.imshow(np.abs(cutout_03_image), cmap = 'inferno', norm = colors.LogNorm(vmin_03 * rms_03_imp, vmax_03 * rms_03_imp))
+            # plt.colorbar()
+            path_im = '/net/vdesk/data2/WoestE/output_EDFN/pngs/'
+            plt.savefig(path_im+'F'+str(i)+'S'+str(source_id[source_idx])+"_Rad"+str(r)+".png")
+            plt.clf()
+        
+def parse_args():
+    """
+    Command line argument parser
+    :return: parsed arguments
+    """
+    parser = ArgumentParser(description='Crop FITS files at multiple resolutions')
+    parser.add_argument('filename6', help='Path to 6 arcsecond FITS image', type=str)
+    # parser.add_argument('path', help='path to input files 0.3 arcseconds', type=str) 
+    # Wasn't recognised in main so took it out for now but will import again later for automation purporses
+    # parser.add_argument('cat', help='Path to catalogue', type=str)
+    return parser.parse_args()
+
+def findrms(mIn,maskSup=1e-7):
+    """
+    find the rms of an array, from Cycil Tasse/kMS
+    """
+    m=mIn[np.abs(mIn)>maskSup]
+    rmsold=np.std(m)
+    diff=1e-1
+    cut=3.
+    med=np.median(m)
+    for i in range(10):
+        ind=np.where(np.abs(m-med)<rmsold*cut)[0]
+        rms=np.std(m[ind])
+        if np.abs((rms-rmsold)/rmsold)<diff: break
+        rmsold=rms
+    return rms
+
+
+def main():
+    """ Main function"""
+    args = parse_args()
+    im_6_arcs_data, im_6_arcs_header, wcs_6_arcs, all_im_03_arcs = imgs_import(args.filename6)
+    take_snippet(64, all_im_03_arcs, im_6_arcs_data, im_6_arcs_header, wcs_6_arcs)
+
+if __name__ == '__main__':
+    main()
