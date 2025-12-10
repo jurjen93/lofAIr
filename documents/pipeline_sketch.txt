@@ -1,0 +1,38 @@
+                                                     Collecting data
+                            (Getting 6" and 0.3" postage stamp images from LOFAR survey data)
+                                                            │
+                                                            ▼
+                                                     Train/Test Split
+                                     ┌──────────────────────┴──────────────────────┐
+                                     │                                             │
+                                     │                                             │
+                                     │                                             │
+               ┌────────┐            ▼                                             │    ┌───────────────┐
+               │TRAINING│    Data Augmentation                                     │    │TEST/VALIDATION│
+               └────────┘    -----------------                                     │    └───────────────┘
+                               - rotating                                          │
+                               - flipping                                          │
+                               - scaling                                           │
+                               - cropping                                          │
+                                     │                                             │
+                                     │                                             │
+                                     ▼                                             ▼
+                               Preprocessing                                 Preprocessing
+                              ---------------                               ---------------
+                           - normalisation                               - normalisation
+                           - transform to array                          - transform to array
+                           - crop 0.3" and 6" to same angular size       - crop 0.3" and 6" to same angular size
+                                     │                                             │
+                                     ▼                                             │
+      Model selection   ────>  Model Training                                      │
+(Diffusion, Flow, GAN, etc.)   --------------                                      │
+                             - hyperparameter tuning                               │
+                             - selecting best model                                │
+                                     │                                             │
+                                     │                                             │
+                                     │                                             │
+                                     └─────────────> Model Evaluation <───-────────┘
+                                                            │
+                                                            ▼
+                                                     Model Deployment
+                                                       (Inference)
