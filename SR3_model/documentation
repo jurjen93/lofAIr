@@ -1,0 +1,48 @@
+For my own understanding of what is happening
+
+data.py seems to be what is currently very similar to the prepcoessing. 
+IMPORTANT THINGS SET HERE
+    scale_factor = 4 (keep this way! but could experiment with this later on)
+Crop size already implemented -> DOES NOT NEED OWN CODE
+Currently loads images from a list
+    --> have to change this to load in the cube! Currently expects images but we have fit files, change the code.
+Random cropping and flipping already put in just like in the preprocessing file!
+    --> seems to overlap mostly! Simply add the rms, clipping and rescaling function
+QUESTION: I do not understand yet where it has the upscaled instances, I assume this right here is the 64x64 (6") image that is being loaded in.
+Evaluation and Testingset are in two classes here
+There is more happening in this file but I don't quite understand it yet. It seems to just be redefining the same things again and again.
+
+diffusion.py describes the gaussian diffusion that the model is build upon
+QUESTION: What does the train and sample step size refer to? Is train the batchsize and sample steps iterations?
+QUESTION: What do these betas and alphas refer to and what is this split needed for
+sample is the diffusion step backwords? So the process we want. And forward is the process of adding noise?
+    --> everything keeps getting normalized here. We talked about not yet normalizing our data beforehand, will this be an issue?
+        --> There is a denormarlize functional as well it seems, but norm is a set value
+
+metrics.py loads in a inception_v3 model? it only has one class which is the Metrics class
+   --> Uses a torch.nn.Upsample function which seems to be required for model, could than also be good enough for the rest of the model?
+   --> Why is the self_crop_out set to 8? 
+seems to hold many core structures regarding training and evaluating said training. Calculating GT dataset means, updating the model, calculating scores
+right now I assume that for initial testing I do not have to touch this file (hopefully)
+
+utils.py has functions needed in training. 
+just seems like some handy functions for some path finding and mapping
+things like the cuda to locate a gpu/cpu I keep confusing those
+appears that it doesn't need to be touched
+
+train.py is where it all comes together. Here you load in the classes/functions from utils, metrics, data and diffusion. 
+THIS IS THE FILE YOU EXECUTE
+Also sets scale factor, seems seperate? Check what each of those does.
+    --> have to turn on random shuffling in set_up_train_env DataLoader? Or is it already shuffled afterwards, check how this works with a cube file.
+QUESTION: why is the generator set to a certain seed?
+Just goes through different epochs and saves the progress after each one.
+QUESTION: it seems to also ask for a testing set? Can we just skip that? (but this is newly introduced here compared to the data set?
+
+main.py has most of the hyperparameters such as the training step, samplesteps, iteration etc. This is also where the image paths are defined -> important!
+    --> Have to put all the right things in
+Also defines some commands like resume -r , check_param -s, and test -t, as well as way more letters so check if you need anything
+DDP settings? 
+Mostly also debugging code to raise errors if crucial things are not provided
+
+model.py has the UNet structure that everything is build upon.
+I am assuming I do not have to touch this either
