@@ -12,6 +12,7 @@ from train import DiffTrainer
 
 if __name__ == '__main__': 
     ### Model Lib.
+    os.environ["XDG_CACHE_HOME"] = "/net/vdesk/data2/WoestE/xdg/cache"
     models = dict()
     for name in os.listdir():
         if os.path.isdir(name) and not name.startswith('.') and not name.startswith('_'):
@@ -27,24 +28,22 @@ if __name__ == '__main__':
     Please change the parameters according to your needs.
     """
     ###########################################################################
-    settings['steps']=2000 # diffusion training steps
+    settings['steps']=200 # diffusion training steps
     settings['sample_steps']=100 # diffusion sample steps
-    settings['iters']=500000 # training iterations
+    settings['iters']=50 # training iterations
     settings['lr']=1e-5 # training learning rate
     settings['train_batch_size']=4 # training batch size
     settings['eval_batch_size']=4 # test batch size
     settings['workers']=4 # number of dataloader workers
-    settings['report_img_idx'] = [0, 10, 20, 30] # validation image index
-    settings['report_img_per'] = 10 # validation image report period
+    settings['report_img_idx'] = [0, 1] # validation image index, changed from [0,10,20,30]
+    settings['report_img_per'] = 1 # validation image report period, changed from 10
     settings['crop_size'] = 64 # good for initial, but change for second iteration
-    settings['div2k_train_lr_path']=''
-    settings['div2k_train_hr_path']=''
-    settings['div2k_test_lr_path']=''
-    settings['div2k_test_hr_path']=''
-    settings['flickr2k_train_lr_path']=''
-    settings['flickr2k_train_hr_path']=''
-    settings['flickr2k_test_lr_path']=''
-    settings['flickr2k_test_hr_path']=''
+    settings['train_lr_path']='testcube_train_6_arcs.fits'
+    settings['train_hr_path']='testcube_train_03_arcs.fits'
+    settings['val_lr_path']='testcube_val_6_arcs.fits'
+    settings['val_hr_path']='testcube_val_03_arcs.fits'
+    settings['test_lr_path']='testcube_val_6_arcs.fits'
+    settings['test_hr_path']='testcube_val_03_arcs.fits'
     ###########################################################################
     """
      [ Hyper-parameters & image paths ]
@@ -87,6 +86,7 @@ if __name__ == '__main__':
         settings['user_set_devices'] = sorted(devices) if len(device) > 0 else None
     
     if '-m' in sys.argv:
+        # Loads in the UNet model
         idx = sys.argv.index('-m')
         model_name = sys.argv[idx+1]
         settings['model'] = getattr(models[model_name], model_name)

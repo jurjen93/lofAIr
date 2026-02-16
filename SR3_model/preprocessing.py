@@ -32,6 +32,7 @@ def findrms(mIn,maskSup=1e-7):
 def clip_rms(image_data: np.ndarray, clip_rms = 3):
     rms = findrms(image_data)
     image_data[image_data < clip_rms*rms] = 0
+    image_data[image_data == 0] = 1e-10
     
     return image_data
 

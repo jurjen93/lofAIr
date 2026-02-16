@@ -8,16 +8,13 @@ from skimage.transform import resize
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
+import matplotlib.pyplot as plt
 from preprocessing import findrms, clip_rms, rescale
 from astropy.io import fits
 
 class TrainDataset(Dataset):
     def __init__(self, img_path, lbl_path, crop_size):
-        # TODO: switch this to work with cube files
         # Importing data
-        # self.img_names = sorted([name for name in listdir(img_path)])
-        # self.lbl_names = sorted([name for name in listdir(lbl_path)])
-        
         self.img_path = img_path
         self.lbl_path = lbl_path
         
@@ -30,7 +27,7 @@ class TrainDataset(Dataset):
         img_data = img_data.astype(np.float32)
         self.img_cube = self.tensor(img_data) 
         lbl_data = fits.open(self.lbl_path)[0].data
-        lbl_data = resize(lbl_data, [len(self.img_cube[0,:,0]),256, 256])
+        lbl_data = resize(lbl_data, [len(self.img_cube[0,:,0]), self.crop_size*self.scale_factor, self.crop_size*self.scale_factor], anti_aliasing=True)
         lbl_data = lbl_data.astype(np.float32)
         self.lbl_cube = self.tensor(lbl_data)
         
@@ -40,11 +37,7 @@ class TrainDataset(Dataset):
     def __getitem__(self, idx):
         img = self.img_cube[:, idx, :]
         lbl = self.lbl_cube[:, idx, :]
-
-        # clip_rms
-        img = clip_rms(img, clip_rms = 3)
-        lbl = clip_rms(lbl, clip_rms = 3)
-
+        
         # random crop
         params = transforms.RandomCrop(self.crop_size).get_params(img, (self.crop_size, self.crop_size)) 
         img = transforms.functional.crop(img, *params) #
@@ -63,19 +56,25 @@ class TrainDataset(Dataset):
         img = transforms.functional.rotate(img, angle)
         lbl = transforms.functional.rotate(lbl, angle)
 
-        # Returning to dimensions of 64x64 --> check if this is correct or not
+        # Returning to dimensions of 2D image
         img = img.squeeze()
         lbl = lbl.squeeze()
+        
+        # clip_rms
+        img = clip_rms(img, clip_rms = 3)
+        lbl = clip_rms(lbl, clip_rms = 3)
+        
+        # Adding empty layers as replacement for expected 3 colors
+        empty_layer_lr = torch.zeros(self.crop_size, self.crop_size)
+        empty_layer_hr = torch.zeros(self.crop_size*self.scale_factor, self.crop_size*self.scale_factor)
+        img = torch.stack([img, empty_layer_lr, empty_layer_lr])
+        lbl = torch.stack([lbl, empty_layer_hr, empty_layer_hr])
 
         return img, lbl
     
 class EvalDataset(Dataset):
     def __init__(self, img_path, lbl_path, crop_size=None):
-        # TODO: switch this to work with cube files
         # Importing data
-        # self.img_names = sorted([name for name in listdir(img_path)])
-        # self.lbl_names = sorted([name for name in listdir(lbl_path)])
-        
         self.img_path = img_path
         self.lbl_path = lbl_path
         
@@ -88,7 +87,9 @@ class EvalDataset(Dataset):
         img_data = img_data.astype(np.float32)
         self.img_cube = self.tensor(img_data) 
         lbl_data = fits.open(self.lbl_path)[0].data
-        lbl_data = resize(lbl_data, [len(self.img_cube[0,:,0]),256, 256])
+        plt.imshow(lbl_data[0,:,:])
+        lbl_data = resize(lbl_data, [len(self.img_cube[0,:,0]), self.crop_size*self.scale_factor, self.crop_size*self.scale_factor], anti_aliasing=True)
+        plt.imshow(lbl_data[0,:,:])
         lbl_data = lbl_data.astype(np.float32)
         self.lbl_cube = self.tensor(lbl_data)
 
@@ -96,22 +97,27 @@ class EvalDataset(Dataset):
         return len(self.img_cube[0, :, 0]) 
 
     def __getitem__(self, idx):
-        img = img_cube[:, idx, :]
-        lbl = lbl_cube[:, idx, :]
-
-        # crop
-        if self.crop_size != None:
-            img = transforms.CenterCrop(self.crop_size)(img) # Cropping to fit size
-            lbl = transforms.CenterCrop(self.scale_factor*self.crop_size)(lbl)
+        img = self.img_cube[:, idx, :]
+        lbl = self.lbl_cube[:, idx, :]
 
         # clip_rms
         img = clip_rms(img, clip_rms = 3)
-        lbl = clip_rms(img, clip_rms = 3)
+        lbl = clip_rms(lbl, clip_rms = 3)
+        
+        # crop
+        params = transforms.RandomCrop(self.crop_size).get_params(img, (self.crop_size, self.crop_size)) 
+        img = transforms.functional.crop(img, *params) #
+        lbl = transforms.functional.crop(lbl, *[self.scale_factor*p for p in params])
+
+        # Adding empty layers as replacement for expected 3 colors
+        empty_layer_lr = torch.zeros(self.crop_size, self.crop_size)
+        empty_layer_hr = torch.zeros(self.crop_size*self.scale_factor,self.crop_size*self.scale_factor)
+        img = torch.stack([img, empty_layer_lr, empty_layer_lr])
+        lbl = torch.stack([lbl, empty_layer_hr, empty_layer_hr])
 
         return img, lbl
 
-class DIV2kDataset(TrainDataset):
-    # No clue what this does?
+class Dataset(TrainDataset):
     def __init__(self,
                 img_path,
                 lbl_path,
@@ -121,9 +127,8 @@ class DIV2kDataset(TrainDataset):
             lbl_path,
             crop_size
         )
-
+"""
 class Flickr2KDataset(TrainDataset):
-    # No clue what this does?
     def __init__(self,
                 img_path,
                 lbl_path,
@@ -133,27 +138,21 @@ class Flickr2KDataset(TrainDataset):
             lbl_path,
             crop_size
         )
-
-class DF2KTrainDataset(Dataset):
-    def __init__(self, div2k_lr_path, div2k_hr_path, flickr2k_lr_path, flickr2k_hr_path, crop_size):
-        super().__init__()
-        self.div2k = DIV2kDataset(div2k_lr_path, div2k_hr_path, crop_size)
-        self.flickr2k = Flickr2KDataset(flickr2k_lr_path, flickr2k_hr_path, crop_size)
-        self.div2k_len = len(self.div2k)
-        self.flickr2k_len = len(self.flickr2k)
-        self.total_imgs = self.div2k_len+self.flickr2k_len # This right now is just training + testing set, what are these names?
+"""
+class TrainDataset(Dataset):
+    def __init__(self, lr_path, hr_path, crop_size):
+        super().__init__(lr_path, hr_path, crop_size)
+        self.datatrain = Dataset(lr_path, hr_path, crop_size)
+        self.datatrain_len = len(self.datatrain)
+        self.total_imgs = self.datatrain_len
     
     def __len__(self):
         return self.total_imgs
     
     def __getitem__(self, idx):
-        if idx < self.div2k_len:
-            return self.div2k.__getitem__(idx)
-        else:
-            return self.flickr2k.__getitem__(idx-self.div2k_len)
+        return self.datatrain.__getitem__(idx)
 
-class DIV2KValDataset(EvalDataset):
-    # Isn't this the same as before?
+class ValDataset(EvalDataset):
     def __init__(self,
                 img_path,
                 lbl_path,
@@ -164,7 +163,7 @@ class DIV2KValDataset(EvalDataset):
             crop_size
         )
 
-class Flickr2KTestDataset(EvalDataset):
+class TestDataset(EvalDataset):
     def __init__(self,
                 img_path,
                 lbl_path,

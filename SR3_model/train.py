@@ -1,11 +1,13 @@
 import os
 import copy
+os.environ["XDG_CACHE_HOME"] = "/net/vdesk/data2/WoestE/xdg/cache"
 
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data.distributed import DistributedSampler
@@ -17,7 +19,7 @@ from torchvision import transforms
 # These are all found in the github folder! 
 from utils import Utils
 from metrics import Metrics
-from data import DF2KTrainDataset, DIV2KValDataset, Flickr2KTestDataset
+from data import TrainDataset, ValDataset, TestDataset
 from diffusion import GaussianDiffusion
 
 import torch.distributed as dist
@@ -60,13 +62,11 @@ class DiffTrainer(Utils):
         self.report_img_idxs=settings['report_img_idx']
         self.report_img_per=settings['report_img_per']
 
-        self.div2k_train_lr_path=settings['div2k_train_lr_path']
-        self.div2k_train_hr_path=settings['div2k_train_hr_path']
-        self.flickr2k_train_lr_path=settings['flickr2k_train_lr_path']
-        self.flickr2k_train_hr_path=settings['flickr2k_train_hr_path']
+        self.train_lr_path=settings['train_lr_path']
+        self.train_hr_path=settings['train_hr_path']
 
-        self.div2k_test_lr_path=settings['div2k_test_lr_path']
-        self.div2k_test_hr_path=settings['div2k_test_hr_path']
+        self.val_lr_path=settings['val_lr_path']
+        self.val_hr_path=settings['val_hr_path']
 
         self.crop_size=settings['crop_size']
         
@@ -80,8 +80,8 @@ class DiffTrainer(Utils):
     # register objects needed to perform training
     def _setup_train_env(self):
         # define train dataloader
-        train_dataset = DF2KTrainDataset(self.div2k_train_lr_path, self.div2k_train_hr_path, self.flickr2k_train_lr_path, self.flickr2k_train_hr_path, self.crop_size) # TODO: turn on random shuffeling
-        self.train_sampler = DistributedSampler(train_dataset, shuffle=True, drop_last=True) if self.mgpu else None # Wait it is shuffled?
+        train_dataset = TrainDataset(self.train_lr_path, self.train_hr_path, self.crop_size)
+        self.train_sampler = DistributedSampler(train_dataset, shuffle=True, drop_last=True) if self.mgpu else None
         self.train_dataloader = DataLoader(train_dataset, batch_size=self.train_batch_size, num_workers=self.workers, sampler=self.train_sampler, pin_memory=True)
 
         # register train variables 
@@ -91,7 +91,7 @@ class DiffTrainer(Utils):
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=self.epochs*self.iter_per_epoch, eta_min=1e-7)
 
         # define valid dataloader
-        self.valid_dataset = DIV2KValDataset(self.div2k_test_lr_path, self.div2k_test_hr_path, self.crop_size)
+        self.valid_dataset = ValDataset(self.val_lr_path, self.val_hr_path, self.crop_size)
         valid_sampler = DistributedSampler(self.valid_dataset, shuffle=False, drop_last=False) if self.mgpu else None
         self.valid_dataloader = DataLoader(self.valid_dataset, batch_size=self.eval_batch_size, num_workers=self.workers, sampler=valid_sampler, pin_memory=True)
 
@@ -165,10 +165,17 @@ class DiffTrainer(Utils):
                 self._store_train_env(epoch)
                 self.writer.add_scalar('Train Loss', t_loss, epoch)
                 self.writer.add_scalar('Valid Loss', v_loss, epoch)
+                print(f'> [Stats.] | Train Loss:{t_loss}, Valid Loss: {v_loss}')
                 if sample != None:
                     self.writer.add_images('Valid Images/A. Bicubic', img, epoch)
                     self.writer.add_images('Valid Images/B. Sample', sample, epoch)
                     self.writer.add_images('Valid Images/C. GT', lbl, epoch)
+                    plt.imshow(torch.Tensor.cpu(img[0,0,:,:]))
+                    plt.show()
+                    plt.imshow(torch.Tensor.cpu(sample[0,0,:,:]))
+                    plt.show()
+                    plt.imshow(torch.Tensor.cpu(lbl[0,0,:,:]))
+                    plt.show()
             
             epoch += 1
             pbar.update(1)
@@ -225,10 +232,10 @@ class DiffTrainer(Utils):
         v_loss_tot = 0.0
         with torch.no_grad():
             for img, lbl in tqdm(self.valid_dataloader, desc=f'Epoch {epoch+1}/{self.epochs} [Valid]', leave=False):
-
+                #TODO: import the scale factor
                 img = torch.clip(self.upsample(img.to(self.device)), 0.0, 1.0)
                 lbl = lbl.to(self.device)
-
+                
                 v_loss = self.ema_net(lbl, img)
                 v_loss_tot += v_loss.item()
 
@@ -249,8 +256,8 @@ class DiffTrainer(Utils):
         self.workers=settings['workers']
         self.report_img_idxs=settings['report_img_idx']
 
-        self.flickr2k_test_lr_path=settings['flickr2k_test_lr_path']
-        self.flickr2k_test_hr_path=settings['flickr2k_test_hr_path']
+        self.test_lr_path=settings['test_lr_path']
+        self.test_hr_path=settings['test_hr_path']
 
         self.crop_size=settings['crop_size']
         
@@ -265,7 +272,7 @@ class DiffTrainer(Utils):
     # register objects needed to perform tesing
     def _setup_test_env(self, virtual_device, ngpus_per_node):
         # define dataloader
-        self.test_dataset = Flickr2KTestDataset(self.flickr2k_test_lr_path, self.flickr2k_test_hr_path, self.crop_size)
+        self.test_dataset = TestDataset(self.test_lr_path, self.test_hr_path, self.crop_size)
         test_sampler = DistributedSampler(self.test_dataset, shuffle=False, drop_last=False) if self.mgpu and self.is_divisible(self.test_dataset, ngpus_per_node) else None
         self.test_dataloader = DataLoader(self.test_dataset, batch_size=self.eval_batch_size, num_workers=self.workers, sampler=test_sampler, pin_memory=True)
         
